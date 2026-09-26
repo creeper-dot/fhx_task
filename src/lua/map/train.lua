@@ -23,29 +23,16 @@ local function navigate(_, to)
 		end,
 		timeout = 15,
 	}
-	action:fuck("navigate timeout, current x=" .. bb.user.x .. " y=" .. bb.user.y)
+	if timeout then
+        action:fuck("navigate timeout, current x=" .. bb.user.x .. " y=" .. bb.user.y)
+    end
+	
 	return not timeout
 end
-
 Map:connect(Points.kOrigin, Points.kAttackInLeft) { navigate, navigate }
 Map:connect(Points.kOrigin, Points.kAttackInRight) { navigate, navigate }
 Map:connect(Points.kAttackInRight, Points.kStepBegin) { navigate, navigate }
-Map:connect(Points.kStepBegin, Points.kStepFinal) {
-	function(from, to)
-		action:cancel_target()
-		action:update_supercap_boost(true)
-		local success = action:blocking_cross_step(math.atan(to.y - from.y, to.x - from.x), true)
-		action:update_supercap_boost(false)
-		return success
-	end,
-	function(from, to)
-		action:cancel_target()
-		action:update_supercap_boost(true)
-		local success = action:blocking_cross_step(math.atan(to.y - from.y, to.x - from.x), false)
-		action:update_supercap_boost(false)
-		return success
-	end,
-}
+Map:connect(Points.kStepBegin, Points.kStepFinal) { navigate, navigate }
 Map:connect(Points.kStepFinal, Points.kUnderSlope) { navigate, navigate }
 Map:connect(Points.kUnderSlope, Points.kUnderRune) { navigate, navigate }
 Map:connect(Points.kUnderRune, Points.kAttackAtHole) { navigate, navigate }
