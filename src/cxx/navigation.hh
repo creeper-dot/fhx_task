@@ -5,6 +5,9 @@
 
 #include <Eigen/Geometry>
 
+#include <optional>
+#include <tuple>
+
 namespace rmcs::navigation::details {
 
 class Navigation {
@@ -66,6 +69,32 @@ public:
     /// 用法示例：
     /// - auto [x, y, yaw] = navigation.check_position();
     auto check_position() const -> std::tuple<double, double, double>;
+
+    /// 点击位姿来源。
+    enum class PoseSource { INITIAL, GOAL };
+
+    /// 开关点击位姿捕获功能（可选）。
+    ///
+    /// 行为说明：
+    /// - enable=true 时，订阅 `/initialpose`（PoseWithCovarianceStamped）
+    ///   和 `/goal_pose`（PoseStamped），仅缓存最近一次点击位姿，不直接下发目标；
+    /// - enable=false 时，取消订阅并清空缓存。
+    ///
+    /// 用法示例：
+    /// - navigation.switch_pose_capture(true);
+    /// - navigation.switch_pose_capture(false);
+    auto switch_pose_capture(bool enable) -> void;
+
+    /// 取出并清空指定来源的点击位姿。
+    ///
+    /// 返回值：
+    /// - 已收到点击时为 {x（米）, y（米）, yaw（弧度）}；
+    /// - 尚未收到时为 std::nullopt。
+    ///
+    /// 用法示例：
+    /// - auto pose = navigation.consume_pose(PoseSource::GOAL);
+    auto consume_pose(PoseSource source)
+        -> std::optional<std::tuple<double, double, double>>;
 
     /// 开关 goal topic 转发功能（可选）。
     ///

@@ -155,6 +155,24 @@ function action:switch_topic_forward(enable)
 	api.switch_topic_forward(enable)
 end
 
+--- 开关点击位姿捕获（订阅 /initialpose 与 /goal_pose，仅缓存不下发）
+--- @param enable boolean
+function action:switch_pose_capture(enable)
+	api.switch_pose_capture(enable)
+end
+
+--- 取出并清除最近一次点击的初始位姿
+--- @return boolean found, number x, number y, number yaw
+function action:consume_initial_pose()
+	return api.consume_initial_pose()
+end
+
+--- 取出并清除最近一次点击的目标位姿
+--- @return boolean found, number x, number y, number yaw
+function action:consume_goal_pose()
+	return api.consume_goal_pose()
+end
+
 function action:info(message)
 	api.info(message)
 end

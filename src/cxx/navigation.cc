@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -18,6 +19,7 @@
 #include <utility>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <rclcpp/subscription.hpp>
@@ -37,6 +39,8 @@ struct Navigation::Impl : rmcs::navigation::NodeMixin {
     using GoalClient = rclcpp_action::Client<GoalAction>;
     using GoalSubscription = rclcpp::Subscription<geometry_msgs::msg::PoseStamped>;
     using PoseStamped = geometry_msgs::msg::PoseStamped;
+    using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
+    using Pose2D = std::tuple<double, double, double>;
 
     using TfBuffer = tf2_ros::Buffer;
     using TfListener = tf2_ros::TransformListener;
@@ -48,6 +52,7 @@ struct Navigation::Impl : rmcs::navigation::NodeMixin {
     static constexpr auto kBaseFrame = "base_link";
     static constexpr auto kMoveBaseGoalTopic = "/move_base_simple/goal";
     static constexpr auto kGoalPoseTopic = "/goal_pose";
+    static constexpr auto kInitialPoseTopic = "/initialpose";
     static constexpr auto kRelocalizeTriggerFifo = "/tmp/rmcs-localization/relocalize/trigger";
     static constexpr auto kServerNotReadyWarnInterval = std::chrono::seconds{5};
 
@@ -85,6 +90,16 @@ struct Navigation::Impl : rmcs::navigation::NodeMixin {
     std::shared_ptr<GoalSubscription> move_base_goal_subscription;
     std::shared_ptr<GoalSubscription> goal_pose_subscription;
     bool topic_forward_enabled = false;
+
+    // Clicked Pose Capture (Optional)
+    // 订阅回调运行在 rclcpp executor 线程，consume_pose 运行在 component update 线程，
+    // 因此缓存与开关均由 capture_mutex 保护。
+    std::mutex capture_mutex;
+    std::shared_ptr<rclcpp::Subscription<PoseWithCovarianceStamped>> initial_pose_subscription;
+    std::shared_ptr<GoalSubscription> captured_goal_pose_subscription;
+    bool pose_capture_enabled = false;
+    std::optional<Pose2D> initial_pose_cache;
+    std::optional<Pose2D> goal_pose_cache;
 
     // Localization Trigger (FIFO)
     // 触发：向 /tmp/rmcs-localization/relocalize/trigger 写入 "red"/"blue"
@@ -176,6 +191,57 @@ struct Navigation::Impl : rmcs::navigation::NodeMixin {
         };
 
         client->async_send_goal(navigation_goal_message, options);
+    }
+
+    static auto is_world_frame(const std::string& frame_id) -> bool {
+        return frame_id.empty() || frame_id == kWorldFrame;
+    }
+
+    static auto yaw_from_quaternion(const geometry_msgs::msg::Quaternion& rotation) -> double {
+        const auto sin_yaw = 2.0 * ((rotation.w * rotation.z) + (rotation.x * rotation.y));
+        const auto cos_yaw = 1.0 - (2.0 * ((rotation.y * rotation.y) + (rotation.z * rotation.z)));
+        return std::atan2(sin_yaw, cos_yaw);
+    }
+
+    /// 将任意坐标系下的点击位姿转换到 world 坐标系。
+    ///
+    /// Foxglove 的 2D pose 工具会把点发布在 3D 面板的显示坐标系下（常见为 base_link），
+    /// 因此非 world 的输入需要用 TF 变换到 world 后才能作为导航目标。
+    auto resolve_world_pose(const PoseStamped& pose) -> std::optional<Pose2D> {
+        const auto& frame_id = pose.header.frame_id;
+        if (is_world_frame(frame_id)) {
+            return Pose2D{
+                pose.pose.position.x,
+                pose.pose.position.y,
+                yaw_from_quaternion(pose.pose.orientation),
+            };
+        }
+
+        try {
+            const auto transform =
+                tf_buffer->lookupTransform(kWorldFrame, frame_id, tf2::TimePointZero);
+            const auto& translation = transform.transform.translation;
+            const auto& rotation = transform.transform.rotation;
+            const auto& position = pose.pose.position;
+
+            const auto tx = 2.0 * (rotation.y * position.z - rotation.z * position.y);
+            const auto ty = 2.0 * (rotation.z * position.x - rotation.x * position.z);
+            const auto tz = 2.0 * (rotation.x * position.y - rotation.y * position.x);
+
+            const auto x = position.x + rotation.w * tx + (rotation.y * tz - rotation.z * ty);
+            const auto y = position.y + rotation.w * ty + (rotation.z * tx - rotation.x * tz);
+
+            return Pose2D{
+                x + translation.x,
+                y + translation.y,
+                yaw_from_quaternion(rotation) + yaw_from_quaternion(pose.pose.orientation),
+            };
+        } catch (const tf2::TransformException& exception) {
+            warn(
+                "failed to transform pose from [{}] to [{}]: {}", frame_id, kWorldFrame,
+                exception.what());
+            return std::nullopt;
+        }
     }
 
     auto make_topic_forward_subscription(std::string_view topic) {
@@ -303,6 +369,73 @@ public:
         info("goal topic forwarding disabled");
     }
 
+    auto switch_pose_capture(bool enable) -> void {
+        const std::lock_guard lock{capture_mutex};
+        if (pose_capture_enabled == enable)
+            return;
+
+        pose_capture_enabled = enable;
+        if (!pose_capture_enabled) {
+            initial_pose_subscription.reset();
+            captured_goal_pose_subscription.reset();
+            initial_pose_cache.reset();
+            goal_pose_cache.reset();
+            info("pose capture disabled");
+            return;
+        }
+
+        initial_pose_cache.reset();
+        goal_pose_cache.reset();
+        initial_pose_subscription = node.create_subscription<PoseWithCovarianceStamped>(
+            kInitialPoseTopic, 10,
+            [this](const std::unique_ptr<PoseWithCovarianceStamped>& message) {
+                if (!message)
+                    return;
+
+                auto pose = PoseStamped{};
+                pose.header = message->header;
+                pose.pose = message->pose.pose;
+
+                const auto world_pose = resolve_world_pose(pose);
+                if (!world_pose)
+                    return;
+
+                {
+                    const std::lock_guard cache_lock{capture_mutex};
+                    initial_pose_cache = world_pose;
+                }
+                info(
+                    "captured initial pose -> ({:.2}, {:.2})", std::get<0>(*world_pose),
+                    std::get<1>(*world_pose));
+            });
+        captured_goal_pose_subscription = node.create_subscription<PoseStamped>(
+            kGoalPoseTopic, 10, [this](const std::unique_ptr<PoseStamped>& message) {
+                if (!message)
+                    return;
+
+                const auto world_pose = resolve_world_pose(*message);
+                if (!world_pose)
+                    return;
+
+                {
+                    const std::lock_guard cache_lock{capture_mutex};
+                    goal_pose_cache = world_pose;
+                }
+                info(
+                    "captured goal pose -> ({:.2}, {:.2})", std::get<0>(*world_pose),
+                    std::get<1>(*world_pose));
+            });
+        info("pose capture enabled");
+    }
+
+    auto consume_pose(PoseSource source) -> std::optional<Pose2D> {
+        const std::lock_guard lock{capture_mutex};
+        auto& cache = (source == PoseSource::INITIAL) ? initial_pose_cache : goal_pose_cache;
+        auto result = cache;
+        cache.reset();
+        return result;
+    }
+
     auto check_position() const -> std::tuple<double, double, double> {
         try {
             auto transform =
@@ -334,6 +467,12 @@ auto Navigation::cancel_target() -> void { pimpl->cancel_target(); }
 auto Navigation::relocalize(rmcs_msgs::RobotColor color) -> void { pimpl->relocalize(color); }
 
 auto Navigation::switch_topic_forward(bool enable) -> void { pimpl->switch_topic_forward(enable); }
+
+auto Navigation::switch_pose_capture(bool enable) -> void { pimpl->switch_pose_capture(enable); }
+
+auto Navigation::consume_pose(PoseSource source) -> std::optional<std::tuple<double, double, double>> {
+    return pimpl->consume_pose(source);
+}
 
 auto Navigation::check_position() const -> std::tuple<double, double, double> {
     return pimpl->check_position();

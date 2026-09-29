@@ -7,6 +7,9 @@ local util = require("util.native")
 --- @class Api
 ---
 --- @field switch_topic_forward fun(enable: boolean)
+--- @field switch_pose_capture fun(enable: boolean)
+--- @field consume_initial_pose fun(): boolean, number, number, number
+--- @field consume_goal_pose fun(): boolean, number, number, number
 ---
 --- @field info fun(message: string)
 --- @field warn fun(message: string)

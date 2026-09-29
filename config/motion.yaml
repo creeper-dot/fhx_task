@@ -25,7 +25,7 @@ planner_server:
       # 单次规划时间预算（秒），也决定留给平滑的时间；大图可适当调大，过大会加剧卡顿
       max_planning_time: 2.0
       # 代价图惩罚系数：越大越贴走廊中线/远离障碍，越小越抄近路
-      cost_travel_multiplier: 5.0
+      cost_travel_multiplier: 15.0
       # 末位姿是否取"接近方向"的朝向；跟踪器不转向，保持 false
       use_final_approach_orientation: false
       # 路径后处理平滑（SimpleSmoother）
@@ -47,7 +47,7 @@ global_costmap:
       global_frame: world
       robot_base_frame: base_link
       # 车体轮廓（正方形半边 0.2475，对应对角 0.7）；2D 规划按内接半径判碰
-      footprint: "[[0.35, 0.0], [0.247, 0.247], [0.0, 0.35], [-0.247, 0.247], [-0.35, 0.0], [-0.247, -0.247], [0.0, -0.35], [0.247, -0.247]]"
+      footprint: "[[0.21, 0.21], [0.21, -0.21], [-0.21, -0.21], [-0.21, 0.21]]"
       # 代价图刷新/发布频率（Hz），想更跟手可调到 10
       update_frequency: 5.0
       publish_frequency: 5.0
@@ -65,9 +65,9 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         # 障碍膨胀半径（米）：决定离墙余量，不得小于内接半径 0.2475
-        inflation_radius: 0.7
+        inflation_radius: 0.32
         # 膨胀代价衰减缓急：越大越贴墙，越小越走中间
-        cost_scaling_factor: 0.3
+        cost_scaling_factor: 0.1
 
 # 局部地图 + 局部规划
 controller_server:
@@ -92,7 +92,7 @@ controller_server:
     general_goal_checker:
       plugin: "nav2_controller::PositionGoalChecker"
       # 到点判定半径（米）
-      xy_goal_tolerance: 0.1
+      xy_goal_tolerance: 0.15
 
     # 布局规划核心
     controller_plugins: ["FollowPath"]
@@ -160,7 +160,7 @@ controller_server:
       # 代价评价器：碰撞与贴近障碍的惩罚
       CostCritic:
         enabled: true
-        cost_weight: 10.0
+        cost_weight: 15.0
         # 到达该代价即视为危险，触发高惩罚
         critical_cost: 120.0
         # 碰撞的代价值（极大，等价硬约束）
@@ -168,7 +168,7 @@ controller_server:
         # 近碰撞代价值；必须是整数，写成浮点会导致 controller_server 无法 activate
         near_collision_cost: 230
         # 代价随距离的幂次，越大越强调远离障碍
-        cost_power: 2
+        cost_power: 3
         # 用实际 footprint 而非质点做碰撞检查，安全边界与车体一致
         consider_footprint: true
         # 距目标该距离内改用目标代价，弱化避障以完成最后接近
@@ -184,15 +184,15 @@ controller_server:
       # 路径对齐评价器：让轨迹方向贴合全局路径
       PathAlignCritic:
         enabled: true
-        cost_weight: 0.8
+        cost_weight: 10.0
         # 距路径小于该距离才开始计分
         threshold_to_consider: 1.0
         # 轨迹采样步长，控制对齐检查的密度
-        trajectory_point_step: 3
+        trajectory_point_step: 2
       # 路径跟随评价器：鼓励沿全局路径向前推进
       PathFollowCritic:
         enabled: true
-        cost_weight: 3.2
+        cost_weight: 4.0
         # 距路径小于该距离才开始计分
         threshold_to_consider: 1.0
 
@@ -200,9 +200,9 @@ local_costmap:
   local_costmap:
     ros__parameters:
       initial_transform_timeout: 120.0
-      global_frame: base_link
+      global_frame: odom
       robot_base_frame: base_link
-      footprint: "[[0.35, 0.0], [0.247, 0.247], [0.0, 0.35], [-0.247, 0.247], [-0.35, 0.0], [-0.247, -0.247], [0.0, -0.35], [0.247, -0.247]]"
+      footprint: "[[0.18, 0.18], [0.18, -0.18], [-0.18, -0.18], [-0.18, 0.18]]"
       update_frequency: 10.0
       publish_frequency: 10.0
       always_send_full_costmap: true
@@ -225,5 +225,5 @@ local_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5
+        inflation_radius: 0.34
         cost_scaling_factor: 0.5

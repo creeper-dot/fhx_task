@@ -4,9 +4,9 @@ local request = require("util.scheduler").request
 local bb = require("blackboard").singleton()
 
 local Points = {
-	kOrigin = Map:point("kBegin", { x = 0.0, y = 0.0 }),
-	kAttackInLeft = Map:point("kAttackInLeft", { x = 1.0, y = 2.4 }),
-	kAttackInRight = Map:point("kAttackInRight", { x = 2.6, y = 0.2 }),
+	kOrigin = Map:point("kBegin", { x = 0.0, y = 0.3 }),
+	kAttackInLeft = Map:point("kAttackInLeft", { x = 0.0, y = 2.4 }),
+	kAttackInRight = Map:point("kAttackInRight", { x = 2.55, y = 0.0 }),
 	kStepBegin = Map:point("kStepBegin", { x = 2.5, y = -0.8 }),
 	kStepFinal = Map:point("kStepFinal", { x = 2.5, y = -2.2 }),
 	kUnderSlope = Map:point("kUnderSlope", { x = 4.7, y = -2.1 }),

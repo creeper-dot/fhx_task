@@ -11,6 +11,7 @@
 #include <rmcs_msgs/rmcs_msgs.hpp>
 
 #include <string>
+#include <tuple>
 #include <unordered_map>
 
 namespace rmcs::navigation {
@@ -128,6 +129,22 @@ public:
         lua.inject("cancel_target", [this] { nav.cancel_target(); });
         lua.inject(
             "switch_topic_forward", [this](bool enable) { nav.switch_topic_forward(enable); });
+        lua.inject(
+            "switch_pose_capture", [this](bool enable) { nav.switch_pose_capture(enable); });
+        lua.inject("consume_initial_pose", [this]() {
+            const auto pose = nav.consume_pose(details::Navigation::PoseSource::INITIAL);
+            if (!pose)
+                return std::make_tuple(false, 0.0, 0.0, 0.0);
+            const auto [x, y, yaw] = *pose;
+            return std::make_tuple(true, x, y, yaw);
+        });
+        lua.inject("consume_goal_pose", [this]() {
+            const auto pose = nav.consume_pose(details::Navigation::PoseSource::GOAL);
+            if (!pose)
+                return std::make_tuple(false, 0.0, 0.0, 0.0);
+            const auto [x, y, yaw] = *pose;
+            return std::make_tuple(true, x, y, yaw);
+        });
         lua.inject("update_gimbal_direction", [this](double yaw, double pitch) {
             motion.context.target_gimbal_toward = {yaw, pitch};
         });
