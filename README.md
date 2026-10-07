@@ -155,3 +155,10 @@ on_control
 ```
 
 TODO: 未完待续
+
+**效果展示视频：**
+https://github.com/user-attachments/assets/b937dc45-2620-4803-a372-9038bd565927
+
+https://github.com/user-attachments/assets/4ed268b1-d917-4850-b0cb-ac40789bb781
+
+
