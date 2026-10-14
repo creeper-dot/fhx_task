@@ -84,7 +84,7 @@ struct RmcsContext::Impl {
         make_input("/remote/joystick/right", context.rjoystick, Eigen::Vector2d{0.0, 0.0});
         make_input("/remote/joystick/left", context.ljoystick, Eigen::Vector2d{0.0, 0.0});
 
-        make_input("/tf", context.tf, rmcs_description::SentryTf{});
+        make_input("/tf", context.tf, rmcs_description::tunnel_sentry::SentryTf{});
         make_input("/auto_aim/robot_center", context.enemy_center, Eigen::Vector3d{0.0, 0.0, 0.0});
         make_input(
             "/referee/map_command/target_position_x", context.map_command_x, 0.0);
