@@ -27,7 +27,7 @@
 使用 record 模式录制雷达与 IMU 话题（话题名按实际雷达 IP 后缀，参见 `point_lio/config/mid360.yaml` 的 `common.lid_topic` / `imu_topic`）：
 
 ```zsh
-或 ros2 bag record /livox/lidar_<ip> /livox/imu_<ip> -o ~/record-livox/livox-<日期>-<时间>
+或 ros2 bag record /livox/lidar_<ip> /livox/imu_<ip> -o ~/record-livox/livox-$(date +%Y_%m_%d-%H_%M_%S)
 ```
 
 录完后确认包有效（**消息数必须 > 0**，否则是空包）：
@@ -71,7 +71,7 @@ ros2 launch point_lio point_lio.launch.py
 
 ### 步骤 6：触发保存 PCD
 
-bag 回放结束后（建图节点仍在运行），在终端 2 触发保存：
+bag 回放结束后（建图节点仍在运行），在终端 1 触发保存：
 
 ```zsh
 ros2 service call save_pcd_map std_srvs/srv/Trigger "{}"
@@ -99,10 +99,10 @@ cd /tmp/point-lio && python3 -m http.server 8080
 
 ```zsh
 # 先列出可下载的文件，确认文件名
-curl -s http://192.168.3.27:8080/ | grep -o '[0-9_]*\.pcd'
+curl -s http://192.168.0.178:8080/ | grep -o '[0-9_]*\.pcd'
 
 # 下载到主机
-curl -o /workspaces/RMCS/20260829_142935_693.pcd \ http://192.168.3.27:8080/20260829_142935_693.pcd
+curl -o /workspaces/RMCS/20260829_142935_693.pcd http://192.168.0.178:8080/20260829_142935_693.pcd
 ```
 
 传输完成后在小电脑 `Ctrl+C` 关闭 HTTP 服务。
